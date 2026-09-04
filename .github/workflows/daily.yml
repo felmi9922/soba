@@ -1,0 +1,70 @@
+name: SOBA daily build
+
+on:
+  schedule:
+    - cron: "30 7 * * 1-5"
+    - cron: "0 9 * * 1-5"
+  workflow_dispatch:
+    inputs:
+      asof:
+        description: "計算日 YYYY-MM-DD（遡及したいとき。空なら最新営業日）"
+        required: false
+        default: ""
+      force:
+        description: "同じ日でも再計算する（定義を直した後など）"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: soba-build
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install requests
+
+      - name: Build data.json
+        id: build
+        env:
+          JQUANTS_API_KEY: ${{ secrets.JQUANTS_API_KEY }}
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          SOBA_ASOF: ${{ github.event.inputs.asof }}
+          SOBA_FORCE: ${{ github.event.inputs.force == 'true' && '1' || '' }}
+          TZ: Asia/Tokyo
+        run: |
+          set +e
+          python build.py
+          rc=$?
+          set -e
+          if [ $rc -ne 0 ]; then echo "build.py exit $rc（株価未反映なら次回に持ち越し）"; fi
+          echo "rc=$rc" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-node@v4
+        if: steps.build.outputs.rc == '0'
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Build app.js
+        if: steps.build.outputs.rc == '0'
+        run: |
+          npm ci --silent
+          npm run build:app
+
+      - name: Commit data.json / cache
+        if: steps.build.outputs.rc == '0'
+        run: |
+          git config user.name "soba-bot"
+          git config user.email "soba-bot@users.noreply.github.com"
+          git add docs/data.json docs/app.js tag_master.json cache/
+          git diff --cached --quiet && echo "変更なし" || git commit -m "data: $(python -c "import json;print(json.load(open('docs/data.json'))['latest'])")"
+          git push
