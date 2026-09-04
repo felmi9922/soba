@@ -1,0 +1,21 @@
+{
+  "name": "soba",
+  "version": "1.0.0",
+  "description": "SOBA — 相場の見取り図（日次自動更新）",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "build:app": "esbuild app.jsx --bundle --minify --loader:.jsx=jsx --jsx=automatic --define:process.env.NODE_ENV=\\\"production\\\" --format=iife --target=es2022 --outfile=docs/app.js",
+    "build:data": "python3 build.py",
+    "check": "node scripts/check_render.mjs"
+  },
+  "dependencies": {
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  },
+  "private": true,
+  "devDependencies": {
+    "esbuild": "0.24.0"
+  }
+}
